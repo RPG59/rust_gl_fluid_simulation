@@ -1,13 +1,21 @@
 extern crate sdl2;
 extern crate gl;
 
+use advection::Advection;
+use externalForce::ExternalForce;
+use postProcessPass::PostProcessPass;
+use renderTarget::RenderTarget;
 use sdl2::event::Event;
 use gl::{types::{GLfloat, GLenum, GLuint, GLint, GLchar, GLsizeiptr}, Uniform2f};
-use std::{ffi::CString, io::Read, thread::current};
+use std::{ffi::CString, io::Read, thread::current, collections::HashMap};
 use crate::shader::ShaderProgram;
 
 pub mod shader;
 pub mod math;
+pub mod renderTarget;
+pub mod postProcessPass;
+pub mod advection;
+pub mod externalForce;
 
 
 
@@ -32,84 +40,55 @@ static VERTICES: [f32; 12] = [
 ];
 
 
-#[derive(Default, Copy, Clone)]
-struct RenderTarget {
-    framebuffer: u32,
-    texture: u32,
-}
+// #[derive(Default, Copy, Clone)]
+// struct RenderTarget {
+//     framebuffer: u32,
+//     texture: u32,
+// }
 
-impl RenderTarget {
-    fn new() -> Self {
-        let mut render_target = RenderTarget::default();
+// impl RenderTarget {
+//     fn new() -> Self {
+//         let mut render_target = RenderTarget::default();
 
-        unsafe {
-            gl::GenFramebuffers(1, &mut render_target.framebuffer);
-            gl::GenTextures(1, &mut render_target.texture);
+//         unsafe {
+//             gl::GenFramebuffers(1, &mut render_target.framebuffer);
+//             gl::GenTextures(1, &mut render_target.texture);
 
-            gl::BindFramebuffer(gl::FRAMEBUFFER, render_target.framebuffer);
-            gl::BindTexture(gl::TEXTURE_2D, render_target.texture);
+//             gl::BindFramebuffer(gl::FRAMEBUFFER, render_target.framebuffer);
+//             gl::BindTexture(gl::TEXTURE_2D, render_target.texture);
 
-            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA16F as i32, WIDTH as i32, HEIGHT as i32, 0, gl::RGBA, gl::FLOAT, std::ptr::null());
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
-            gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, render_target.texture, 0);
-        }
+//             gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA16F as i32, WIDTH as i32, HEIGHT as i32, 0, gl::RGBA, gl::FLOAT, std::ptr::null());
+//             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+//             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+//             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+//             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+//             gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, render_target.texture, 0);
+//         }
 
-        render_target
-    }
-}
+//         render_target
+//     }
+// }
 
-struct Simulation {
-    current_render_target_index: usize,
-    render_targets: [RenderTarget; 2],
-}
+// struct Simulation {
+//     current_render_target_index: usize,
+//     render_targets: [RenderTarget; 2],
+// }
 
-impl Simulation {
-    fn new() -> Self {
-        Simulation { render_targets: [RenderTarget::new(), RenderTarget::new()], current_render_target_index: 0 }
-    }
+// impl Simulation {
+//     fn new() -> Self {
+//         Simulation { render_targets: [RenderTarget::new(), RenderTarget::new()], current_render_target_index: 0 }
+//     }
 
-    fn render(&self) {
-        let current_rt = self.render_targets[self.current_render_target_index];
+//     fn render(&self) {
+//         let current_rt = self.render_targets[self.current_render_target_index];
 
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, current_rt.framebuffer);
-        }
-    }
-}
+//         unsafe {
+//             gl::BindFramebuffer(gl::FRAMEBUFFER, current_rt.framebuffer);
+//         }
+//     }
+// }
 
-fn check_gl_error(function: &str, line: u32) {
-    unsafe {
-        loop {
-            let code = gl::GetError();
 
-            if code == gl::NO_ERROR {
-                return;
-            }
-
-            let message = match code {
-                gl::INVALID_ENUM => "INVALID_ENUM",
-                gl::INVALID_VALUE => "INVALID_VALUE",
-                gl::INVALID_OPERATION => "INVALID_OPERATION",
-                gl::INVALID_FRAMEBUFFER_OPERATION => "INVALID_FRAMEBUFFER_OPERATION",
-                gl::STACK_OVERFLOW => "STACK_OVERFLOW",
-                gl::STACK_UNDERFLOW => "STACK_UNDERFLOW",
-                gl::OUT_OF_MEMORY => "OUT_OF_MEMORY",
-                _ => "UNDEFINED_ERROR",
-            };
-
-            println!("GL error in {}, line: {}, message: {}", function, line, message);
-        }
-    }
-}
-
-macro_rules! gl_call {
-    () => {
-        check_gl_error(file!(), line()!);
-    };
-}
 
 
 fn create_rect() {
@@ -207,14 +186,14 @@ fn main() {
     let gl_context = window.gl_create_context().unwrap();
     let _gl = gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::os::raw::c_void);
     let program = ShaderProgram::new( "shaders/vertex.glsl", "shaders/fragment.glsl");
-    let program_compute = ShaderProgram::new( "shaders/devergence.vert.glsl", "shaders/devergence.frag.glsl");
-    let render_targets = [RenderTarget::new(), RenderTarget::new()];
 
+    // *** LOG ***
     unsafe {
         let version = gl::GetString(gl::VERSION);
         let dataStr = std::ffi::CStr::from_ptr(version as *const i8).to_str().unwrap();
         println!("{}", dataStr);
     }
+    // *** LOG END ***
 
     create_rect();
 
@@ -226,23 +205,25 @@ fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut render_count: u64 = 0;
 
+    let resolution = math::Vec2{x: WIDTH as f32, y:HEIGHT as f32};
+    let mut advection_pass = Advection::new();
+    let mut external_force = ExternalForce::new();
+    let mut velocity_rt = RenderTarget::new(2, &resolution);
+
+    let mut mouse = math::Vec2::default();
+
     'main: loop {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => break 'main,
                 Event::MouseButtonDown { timestamp, window_id, which, mouse_btn, clicks, x, y } => {
-                    unsafe {
-                        program_compute.enable();
                         let position = math::Vec2 { x: x as f32 / WIDTH as f32, y: (HEIGHT as f32 -  y as f32) / HEIGHT as f32 };
-                        program_compute.set_uniform_vec2("u_mouse", &position);
                         println!("CLICK: {:?}", position);
-                    }
                 }
                 Event::MouseMotion { timestamp: _, window_id: _, which: _, mousestate: _, x, y, xrel: _, yrel: _ } => {
-                        program_compute.enable();
                         let position = math::Vec2 { x: x as f32 / WIDTH as f32, y: (HEIGHT as f32 -  y as f32) / HEIGHT as f32 };
-                        program_compute.set_uniform_vec2("u_mouse", &position);
-                    println!("X: {}, Y: {}", x, y);
+                        mouse = position;
+                        println!("X: {}, Y: {}", x, y);
                 }
                 _ => {}
             }
@@ -254,20 +235,30 @@ fn main() {
             let current_render_target = (render_count % 2) as usize;
             let next_render_target  = ((render_count + 1) % 2) as usize;
 
-            program_compute.enable();
-            program_compute.set_uniform_1f("devergenceSampler", 0.);
-            program_compute.set_uniform_vec2("u_px", &math::Vec2{x: 1. / WIDTH as f32 * 2., y: 1. / HEIGHT as f32 * 2.});
+
+
+            // program_compute.enable();
+            // program_compute.set_uniform_1f("devergenceSampler", 0.);
 
             // gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, render_targets[current_render_target].framebuffer);
-            gl::BindTexture(gl::TEXTURE_2D, render_targets[next_render_target].texture);
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::DrawElements(gl::TRIANGLE_STRIP, 286, gl::UNSIGNED_INT, std::ptr::null());
-            program_compute.set_uniform_vec2("u_mouse", &math::Vec2{x: 0., y: 0.});
+            // gl::BindFramebuffer(gl::FRAMEBUFFER, render_targets[current_render_target].framebuffer);
+            // gl::BindTexture(gl::TEXTURE_2D, render_targets[next_render_target].texture);
+            // gl::ActiveTexture(gl::TEXTURE0);
+            // gl::DrawElements(gl::TRIANGLE_STRIP, 286, gl::UNSIGNED_INT, std::ptr::null());
+            // program_compute.set_uniform_vec2("u_mouse", &math::Vec2{x: 0., y: 0.});
+
+
+            velocity_rt.bind();
+            advection_pass.render();
+            
+            velocity_rt.bind();
+            external_force.set_force(&mouse);
+            external_force.render();
 
             program.enable();
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::BindTexture(gl::TEXTURE_2D, render_targets[current_render_target].texture);
+            // gl::BindTexture(gl::TEXTURE_2D, render_targets[current_render_target].texture);
+            gl::BindTexture(gl::TEXTURE_2D, velocity_rt.get_texture());
             gl::ActiveTexture(gl::TEXTURE0);
             gl::DrawElements(gl::TRIANGLE_STRIP, 286, gl::UNSIGNED_INT, std::ptr::null());
         }
