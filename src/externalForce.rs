@@ -20,7 +20,7 @@ impl PostProcessPass for ExternalForce {
 impl ExternalForce {
   pub fn new() -> Self {
     ExternalForce {
-      shader: ShaderProgram::new("shaders/devergence.vert.glsl", "shaders/externalForce.frag.glsl"),
+      shader: ShaderProgram::new("shaders/divergence.vert.glsl", "shaders/externalForce.frag.glsl"),
       prev_force_data: Vec2::default(),
     }
   }

@@ -1,10 +1,12 @@
-#version 120
+#version 460
 
 uniform sampler2D u_tex;
 
-varying vec2 v_uv;
+out vec4 color;
+in vec2 v_pos;
 
 
 void main() {
-  gl_FragColor = vec4(texture2D(u_tex, v_uv).x, 0., 0., 1.);
+  vec2 uv = (v_pos + 1.) / 2.;
+  color = vec4(texture2D(u_tex, uv).xy, 0., 1.);
 }

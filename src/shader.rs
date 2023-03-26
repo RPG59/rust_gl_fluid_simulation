@@ -23,7 +23,16 @@ impl ShaderProgram {
     pub fn set_uniform_1f(&self, name: &str, data: f32) {
         unsafe {
             let location = ShaderProgram::get_uniform_location(self, name);
+            println!("Location {}:  {}", name, location);
             gl::Uniform1f(location, data);
+        }
+    }
+
+    pub fn set_uniform_1i(&self, name: &str, data: i32) {
+        unsafe {
+            let location = ShaderProgram::get_uniform_location(self, name);
+            println!("Location {}:  {}", name, location);
+            gl::Uniform1i(location, data);
         }
     }
 

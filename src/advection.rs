@@ -19,7 +19,7 @@ impl PostProcessPass for Advection {
 impl Advection {
   pub fn new() -> Self {
     Advection { 
-      shader: ShaderProgram::new( "shaders/devergence.vert.glsl", "shaders/devergence.frag.glsl")
+      shader: ShaderProgram::new( "shaders/divergence.vert.glsl", "shaders/advection.frag.glsl")
     }
   }
 }

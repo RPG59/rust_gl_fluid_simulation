@@ -46,6 +46,7 @@ impl RenderTarget {
     let i = (self.index + 1) % self.render_buffer.len();
     let iii = self.index % self.render_buffer.len();
 
+    // TODO: change texture slot for this
     unsafe {
         gl::BindFramebuffer(gl::FRAMEBUFFER, self.render_buffer[i].framebuffer);
         gl::BindTexture(gl::TEXTURE_2D, self.render_buffer[iii].texture);

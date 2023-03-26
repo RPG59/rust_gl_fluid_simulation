@@ -5,6 +5,9 @@ use advection::Advection;
 use externalForce::ExternalForce;
 use postProcessPass::PostProcessPass;
 use renderTarget::RenderTarget;
+use divergencePass::DivergencePass;
+use pressurePass::PressurePass;
+use jacobiPass::JacobiPass;
 use sdl2::event::Event;
 use gl::{types::{GLfloat, GLenum, GLuint, GLint, GLchar, GLsizeiptr}, Uniform2f};
 use std::{ffi::CString, io::Read, thread::current, collections::HashMap};
@@ -16,6 +19,9 @@ pub mod renderTarget;
 pub mod postProcessPass;
 pub mod advection;
 pub mod externalForce;
+pub mod divergencePass;
+pub mod pressurePass;
+pub mod jacobiPass;
 
 
 
@@ -208,7 +214,13 @@ fn main() {
     let resolution = math::Vec2{x: WIDTH as f32, y:HEIGHT as f32};
     let mut advection_pass = Advection::new();
     let mut external_force = ExternalForce::new();
+    let mut divergence_pass = DivergencePass::new();
+    let mut pressure_pass = PressurePass::new();
+    let mut jacobi_pass = JacobiPass::new();
+
     let mut velocity_rt = RenderTarget::new(2, &resolution);
+    let mut divergence_rt = RenderTarget::new(2, &resolution);
+    let mut pressure_rt = RenderTarget::new(2, &resolution);
 
     let mut mouse = math::Vec2::default();
 
@@ -238,7 +250,7 @@ fn main() {
 
 
             // program_compute.enable();
-            // program_compute.set_uniform_1f("devergenceSampler", 0.);
+            // program_compute.set_uniform_1f("divergenceSampler", 0.);
 
             // gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             // gl::BindFramebuffer(gl::FRAMEBUFFER, render_targets[current_render_target].framebuffer);
@@ -247,6 +259,7 @@ fn main() {
             // gl::DrawElements(gl::TRIANGLE_STRIP, 286, gl::UNSIGNED_INT, std::ptr::null());
             // program_compute.set_uniform_vec2("u_mouse", &math::Vec2{x: 0., y: 0.});
 
+            gl::ActiveTexture(gl::TEXTURE0);
 
             velocity_rt.bind();
             advection_pass.render();
@@ -255,16 +268,40 @@ fn main() {
             external_force.set_force(&mouse);
             external_force.render();
 
+            divergence_rt.bind();
+            gl::BindTexture(gl::TEXTURE_2D, velocity_rt.get_texture());
+            divergence_pass.render();
+
+            let mut iteration_conut = 0;
+
+
+            while iteration_conut < 20 {
+                gl::ActiveTexture(gl::TEXTURE0);
+                pressure_rt.bind();
+                gl::ActiveTexture(gl::TEXTURE12);
+                gl::BindTexture(gl::TEXTURE_2D, divergence_rt.get_texture());
+                jacobi_pass.render();
+
+                iteration_conut += 1;
+            }
+
+
+            gl::ActiveTexture(gl::TEXTURE0);
+            velocity_rt.bind();
+            gl::ActiveTexture(gl::TEXTURE12);
+            gl::BindTexture(gl::TEXTURE_2D, pressure_rt.get_texture());
+            pressure_pass.render();
+
             program.enable();
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             // gl::BindTexture(gl::TEXTURE_2D, render_targets[current_render_target].texture);
-            gl::BindTexture(gl::TEXTURE_2D, velocity_rt.get_texture());
             gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, velocity_rt.get_texture());
             gl::DrawElements(gl::TRIANGLE_STRIP, 286, gl::UNSIGNED_INT, std::ptr::null());
         }
 
         window.gl_swap_window();
-        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
+        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 120));
         render_count += 1;
     }
 }
