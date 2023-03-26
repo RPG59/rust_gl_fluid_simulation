@@ -25,8 +25,8 @@ pub mod jacobiPass;
 
 
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
+const WIDTH: u32 = 1000;
+const HEIGHT: u32 = 1000;
 
 // mod gargen {
 //     pub struct GardenTest {
